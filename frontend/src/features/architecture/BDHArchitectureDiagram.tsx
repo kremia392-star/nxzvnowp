@@ -108,8 +108,6 @@ const STEPS = [
   { id: 12, name: "Output", key: "output" },
 ] as const;
 
-const STEP_DURATION = 2500;
-
 // =============================================================================
 // COLOR UTILITIES
 // =============================================================================
@@ -194,24 +192,19 @@ export function BDHArchitectureDiagram({
   }, [playbackData, currentLayer, frameData]);
 
   useEffect(() => {
+    // Steps are now fully controlled by parent — no internal auto-advance
     if (!isAnimating) {
       setFillProgress(1);
       return;
     }
+    // When animating, fillProgress is cosmetic (parent handles timing)
     setFillProgress(0);
     const startTime = Date.now();
     const fillInterval = setInterval(() => {
-      setFillProgress(Math.min((Date.now() - startTime) / STEP_DURATION, 1));
+      setFillProgress(Math.min((Date.now() - startTime) / 2000, 1));
     }, 30);
-    const stepTimeout = setTimeout(() => {
-      const next = (currentStep + 1) % STEPS.length;
-      onStepChange ? onStepChange(next) : setInternalStep(next);
-    }, STEP_DURATION);
-    return () => {
-      clearInterval(fillInterval);
-      clearTimeout(stepTimeout);
-    };
-  }, [isAnimating, currentStep, onStepChange]);
+    return () => clearInterval(fillInterval);
+  }, [isAnimating, currentStep]);
 
   const isActive = (s: number) => currentStep >= s;
   const isCurrent = (s: number) => currentStep === s;

@@ -1,74 +1,203 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Play, Pause, RotateCcw, Info, Zap } from "lucide-react";
+import {
+  Play,
+  Pause,
+  RotateCcw,
+  Info,
+  Zap,
+  SkipForward,
+  SkipBack,
+  ChevronRight,
+} from "lucide-react";
 import { BDHArchitectureDiagram } from "@/features/architecture/BDHArchitectureDiagram";
 import { usePlaybackStore } from "@/stores/playbackStore";
+
+// Must match STEPS in BDHArchitectureDiagram
+const NUM_ARCH_STEPS = 13; // 0..12
+const STEP_DURATION = 2000; // ms per architecture step
 
 export function ArchitecturePage() {
   const [inputText, setInputText] = useState("The capital of France is Paris");
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentLayer, setCurrentLayer] = useState(0);
-  const [selectedToken, setSelectedToken] = useState<number | null>(null);
   const [showTooltips, setShowTooltips] = useState(true);
+
+  // === Sequential animation state ===
+  const [currentTokenIdx, setCurrentTokenIdx] = useState(0);
+  const [currentStep, setCurrentStep] = useState(0);
+  const [stepProgress, setStepProgress] = useState(0);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const stepStartRef = useRef<number>(0);
 
   const {
     playbackData,
-    currentFrame,
     isLoading,
     error,
     mode,
     loadPlayback,
     setFrame,
-    nextFrame,
     reset,
   } = usePlaybackStore();
 
+  // Total number of tokens
+  const numTokens = playbackData?.input_chars?.length ?? 0;
+
   // Find frame index for a specific token and layer
-  const findFrameIndex = (tokenIdx: number, layer: number): number => {
-    if (!playbackData) return 0;
-    const idx = playbackData.frames.findIndex(
-      (f) => f.token_idx === tokenIdx && f.layer === layer,
-    );
-    return idx >= 0 ? idx : 0;
-  };
+  const findFrameIndex = useCallback(
+    (tokenIdx: number, layer: number): number => {
+      if (!playbackData) return 0;
+      const idx = playbackData.frames.findIndex(
+        (f) => f.token_idx === tokenIdx && f.layer === layer,
+      );
+      return idx >= 0 ? idx : 0;
+    },
+    [playbackData],
+  );
+
+  // Current frame data for display
+  const currentFrameData = playbackData
+    ? playbackData.frames[findFrameIndex(currentTokenIdx, currentLayer)]
+    : undefined;
+
+  // Sync store frame when token/layer changes
+  useEffect(() => {
+    if (!playbackData) return;
+    const idx = findFrameIndex(currentTokenIdx, currentLayer);
+    setFrame(idx);
+  }, [currentTokenIdx, currentLayer, playbackData, findFrameIndex, setFrame]);
 
   // Load playback data on mount
   useEffect(() => {
     loadPlayback(inputText);
-  }, []); // Only on mount - user clicks Run to update
+  }, []);
 
-  // Animation loop
+  // === Master animation timer ===
   useEffect(() => {
-    if (!isPlaying || !playbackData) return;
+    if (!isPlaying || !playbackData) {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+      return;
+    }
 
-    const interval = setInterval(() => {
-      nextFrame();
-    }, 200); // 5 fps for readable animation
+    stepStartRef.current = Date.now();
+    setStepProgress(0);
 
-    return () => clearInterval(interval);
-  }, [isPlaying, playbackData, nextFrame]);
+    timerRef.current = setInterval(() => {
+      const elapsed = Date.now() - stepStartRef.current;
+      const progress = Math.min(elapsed / STEP_DURATION, 1);
+      setStepProgress(progress);
+
+      if (progress >= 1) {
+        // Step complete — advance
+        setCurrentStep((prev) => {
+          const nextStep = prev + 1;
+          if (nextStep >= NUM_ARCH_STEPS) {
+            // All steps done for this token — advance token
+            setCurrentTokenIdx((prevToken) => {
+              const nextToken = prevToken + 1;
+              if (nextToken >= numTokens) {
+                // All tokens done — stop playing
+                setIsPlaying(false);
+                return prevToken;
+              }
+              return nextToken;
+            });
+            stepStartRef.current = Date.now();
+            setStepProgress(0);
+            return 0; // reset to step 0 for new token
+          }
+          stepStartRef.current = Date.now();
+          setStepProgress(0);
+          return nextStep;
+        });
+      }
+    }, 30);
+
+    return () => {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+    };
+  }, [isPlaying, playbackData, numTokens]);
 
   const handleRun = () => {
     setIsPlaying(false);
+    setCurrentTokenIdx(0);
+    setCurrentStep(0);
+    setStepProgress(0);
     reset();
     loadPlayback(inputText);
   };
 
-  const currentFrameData = playbackData?.frames[currentFrame];
-
-  // Keep currentLayer in sync with frame data
-  useEffect(() => {
-    if (currentFrameData && currentFrameData.layer !== currentLayer) {
-      setCurrentLayer(currentFrameData.layer);
+  const handlePlayPause = () => {
+    if (isPlaying) {
+      setIsPlaying(false);
+    } else {
+      // If we finished all tokens, restart
+      if (
+        currentTokenIdx >= numTokens - 1 &&
+        currentStep >= NUM_ARCH_STEPS - 1
+      ) {
+        setCurrentTokenIdx(0);
+        setCurrentStep(0);
+      }
+      setIsPlaying(true);
     }
-  }, [currentFrameData?.layer]);
+  };
 
-  // Track selected token from animation
-  useEffect(() => {
-    if (currentFrameData && isPlaying) {
-      setSelectedToken(currentFrameData.token_idx);
+  const handleReset = () => {
+    setIsPlaying(false);
+    setCurrentTokenIdx(0);
+    setCurrentStep(0);
+    setStepProgress(0);
+  };
+
+  const handleNextToken = () => {
+    setIsPlaying(false);
+    if (currentTokenIdx < numTokens - 1) {
+      setCurrentTokenIdx((p) => p + 1);
+      setCurrentStep(0);
+      setStepProgress(0);
     }
-  }, [currentFrameData?.token_idx, isPlaying]);
+  };
+
+  const handlePrevToken = () => {
+    setIsPlaying(false);
+    if (currentTokenIdx > 0) {
+      setCurrentTokenIdx((p) => p - 1);
+      setCurrentStep(0);
+      setStepProgress(0);
+    }
+  };
+
+  const handleNextStep = () => {
+    setIsPlaying(false);
+    if (currentStep < NUM_ARCH_STEPS - 1) {
+      setCurrentStep((p) => p + 1);
+      setStepProgress(1);
+    } else if (currentTokenIdx < numTokens - 1) {
+      setCurrentTokenIdx((p) => p + 1);
+      setCurrentStep(0);
+      setStepProgress(0);
+    }
+  };
+
+  const handleStepClick = (stepIdx: number) => {
+    setIsPlaying(false);
+    setCurrentStep(stepIdx);
+    setStepProgress(1);
+  };
+
+  const handleTokenClick = (tokenIdx: number) => {
+    setIsPlaying(false);
+    setCurrentTokenIdx(tokenIdx);
+    setCurrentStep(0);
+    setStepProgress(0);
+  };
 
   return (
     <div className="min-h-screen p-8">
@@ -86,8 +215,12 @@ export function ArchitecturePage() {
                 <div className="absolute inset-0 rounded-full border-4 border-gray-700" />
                 <div className="absolute inset-0 rounded-full border-4 border-t-bdh-accent border-r-transparent border-b-transparent border-l-transparent animate-spin" />
               </div>
-              <p className="text-gray-300 text-sm font-medium">Running inference on model...</p>
-              <p className="text-gray-500 text-xs">Extracting sparse activations</p>
+              <p className="text-gray-300 text-sm font-medium">
+                Running inference on model...
+              </p>
+              <p className="text-gray-500 text-xs">
+                Extracting sparse activations
+              </p>
             </div>
           </motion.div>
         )}
@@ -167,16 +300,11 @@ export function ArchitecturePage() {
               {playbackData.input_chars.map((char, idx) => (
                 <motion.span
                   key={idx}
-                  onClick={() => {
-                    setIsPlaying(false);
-                    setSelectedToken(idx);
-                    const frameIdx = findFrameIndex(idx, currentLayer);
-                    setFrame(frameIdx);
-                  }}
+                  onClick={() => handleTokenClick(idx)}
                   className={`px-2 py-1 rounded font-mono text-sm cursor-pointer transition-all hover:ring-2 hover:ring-bdh-accent/50 ${
-                    currentFrameData?.token_idx === idx
+                    currentTokenIdx === idx
                       ? "bg-bdh-accent text-white shadow-lg shadow-bdh-accent/30"
-                      : idx < (currentFrameData?.token_idx || 0)
+                      : idx < currentTokenIdx
                         ? "bg-gray-700 text-gray-300 hover:bg-gray-600"
                         : "bg-gray-800 text-gray-500 hover:bg-gray-700"
                   }`}
@@ -194,31 +322,78 @@ export function ArchitecturePage() {
             {/* Playback controls */}
             <div className="flex items-center gap-2">
               <button
-                onClick={() => setIsPlaying(!isPlaying)}
+                onClick={handlePrevToken}
+                disabled={currentTokenIdx === 0}
+                className="p-2 rounded-lg bg-gray-800 hover:bg-gray-700 transition-colors disabled:opacity-30"
+                title="Previous token"
+              >
+                <SkipBack size={18} />
+              </button>
+              <button
+                onClick={handlePlayPause}
                 className="p-2 rounded-lg bg-gray-800 hover:bg-gray-700 transition-colors"
+                title={isPlaying ? "Pause" : "Play (step-by-step)"}
               >
                 {isPlaying ? <Pause size={20} /> : <Play size={20} />}
               </button>
               <button
-                onClick={() => {
-                  reset();
-                  setIsPlaying(false);
-                }}
+                onClick={handleNextStep}
                 className="p-2 rounded-lg bg-gray-800 hover:bg-gray-700 transition-colors"
+                title="Next step"
               >
-                <RotateCcw size={20} />
+                <ChevronRight size={20} />
               </button>
               <button
-                onClick={() => setShowTooltips(!showTooltips)}
-                className={`p-2 rounded-lg transition-colors ${
-                  showTooltips
-                    ? "bg-bdh-accent text-white"
-                    : "bg-gray-800 hover:bg-gray-700"
-                }`}
+                onClick={handleNextToken}
+                disabled={currentTokenIdx >= numTokens - 1}
+                className="p-2 rounded-lg bg-gray-800 hover:bg-gray-700 transition-colors disabled:opacity-30"
+                title="Next token"
               >
-                <Info size={20} />
+                <SkipForward size={18} />
+              </button>
+              <button
+                onClick={handleReset}
+                className="p-2 rounded-lg bg-gray-800 hover:bg-gray-700 transition-colors"
+                title="Reset"
+              >
+                <RotateCcw size={18} />
               </button>
             </div>
+          </div>
+        )}
+
+        {/* Progress indicator */}
+        {playbackData && (
+          <div className="mt-3 flex items-center gap-3 text-xs text-gray-400">
+            <span>
+              Token{" "}
+              <span className="text-purple-400 font-bold">
+                {currentTokenIdx + 1}
+              </span>
+              /{numTokens}
+            </span>
+            <span className="text-gray-600">|</span>
+            <span>
+              Step{" "}
+              <span className="text-purple-400 font-bold">
+                {currentStep + 1}
+              </span>
+              /{NUM_ARCH_STEPS}
+            </span>
+            <span className="text-gray-600">|</span>
+            <span>
+              Layer{" "}
+              <span className="text-purple-400 font-bold">
+                {currentLayer + 1}
+              </span>
+            </span>
+            <div className="flex-1" />
+            {isPlaying && (
+              <span className="text-green-400 flex items-center gap-1">
+                <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+                Playing
+              </span>
+            )}
           </div>
         )}
       </motion.div>
@@ -232,10 +407,11 @@ export function ArchitecturePage() {
       >
         <BDHArchitectureDiagram
           frameData={currentFrameData}
-          playbackData={playbackData}
-          showTooltips={showTooltips}
+          playbackData={playbackData ?? undefined}
           currentLayer={currentLayer}
           isAnimating={isPlaying}
+          currentStep={currentStep}
+          onStepChange={handleStepClick}
         />
       </motion.div>
 
@@ -254,14 +430,10 @@ export function ArchitecturePage() {
                 key={i}
                 onClick={() => {
                   setCurrentLayer(i);
-                  // Jump to the current token in this layer
-                  const tokenIdx = currentFrameData?.token_idx ?? selectedToken ?? 0;
-                  const frameIdx = findFrameIndex(tokenIdx, i);
-                  setFrame(frameIdx);
                   setIsPlaying(false);
                 }}
                 className={`px-4 py-2 rounded-lg font-mono transition-all ${
-                  currentFrameData?.layer === i
+                  currentLayer === i
                     ? "bg-bdh-accent text-white shadow-lg shadow-bdh-accent/30"
                     : "bg-gray-800 hover:bg-gray-700 text-gray-400"
                 }`}
