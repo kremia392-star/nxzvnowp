@@ -33,6 +33,7 @@ export function ArchitecturePage() {
   const {
     playbackData,
     isLoading,
+    loadingMessage,
     error,
     mode,
     loadPlayback,
@@ -210,17 +211,19 @@ export function ArchitecturePage() {
             exit={{ opacity: 0 }}
             className="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/80 backdrop-blur-sm"
           >
-            <div className="flex flex-col items-center gap-4">
+            <div className="flex flex-col items-center gap-4 max-w-md text-center">
               <div className="relative w-16 h-16">
                 <div className="absolute inset-0 rounded-full border-4 border-gray-700" />
                 <div className="absolute inset-0 rounded-full border-4 border-t-bdh-accent border-r-transparent border-b-transparent border-l-transparent animate-spin" />
               </div>
               <p className="text-gray-300 text-sm font-medium">
-                Running inference on model...
+                {loadingMessage || "Running inference on model..."}
               </p>
               <p className="text-gray-500 text-xs">
-                Extracting sparse activations
+                The model processes each token through 8 layers with full
+                activation extraction. This typically takes 10-30 seconds.
               </p>
+              <LoadingTimer />
             </div>
           </motion.div>
         )}
@@ -231,29 +234,32 @@ export function ArchitecturePage() {
         <motion.div
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="mb-4 p-4 bg-red-500/20 border border-red-500/50 rounded-lg text-red-300"
+          className="mb-4 p-4 bg-red-500/20 border border-red-500/50 rounded-lg"
         >
-          <strong>Error:</strong> {error}
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-red-300 font-medium mb-1">Inference Failed</p>
+              <p className="text-red-400/80 text-sm">{error}</p>
+            </div>
+            <button
+              onClick={handleRun}
+              className="px-4 py-2 bg-red-500/30 hover:bg-red-500/50 text-red-200 rounded-lg text-sm font-medium transition-colors whitespace-nowrap"
+            >
+              Retry
+            </button>
+          </div>
         </motion.div>
       )}
 
       {/* Mode indicator */}
-      {playbackData && (
+      {playbackData && mode === "live" && (
         <div className="mb-4 flex items-center gap-2">
-          <span
-            className={`px-2 py-1 rounded text-xs font-medium ${
-              mode === "live"
-                ? "bg-green-500/20 text-green-400 border border-green-500/50"
-                : "bg-yellow-500/20 text-yellow-400 border border-yellow-500/50"
-            }`}
-          >
-            {mode === "live" ? "🟢 Live API" : "🟡 Demo Mode"}
+          <span className="px-2 py-1 rounded text-xs font-medium bg-green-500/20 text-green-400 border border-green-500/50">
+            Live API
           </span>
-          {mode === "playback" && (
-            <span className="text-xs text-gray-500">
-              Using sample data - backend may be offline
-            </span>
-          )}
+          <span className="text-xs text-gray-500">
+            Real model inference — {playbackData.frames.length} frames extracted
+          </span>
         </div>
       )}
 
@@ -287,9 +293,22 @@ export function ArchitecturePage() {
             placeholder="Enter text to visualize..."
             className="input-field flex-1"
           />
-          <button onClick={handleRun} className="btn-primary">
-            <Zap size={18} className="mr-2" />
-            Run
+          <button
+            onClick={handleRun}
+            disabled={isLoading}
+            className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isLoading ? (
+              <>
+                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin mr-2" />
+                Running...
+              </>
+            ) : (
+              <>
+                <Zap size={18} className="mr-2" />
+                Run
+              </>
+            )}
           </button>
         </div>
 
@@ -526,4 +545,18 @@ function InsightCard({
       <p className="text-sm text-gray-400">{description}</p>
     </div>
   );
+}
+
+/** Shows elapsed time during loading */
+function LoadingTimer() {
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    const start = Date.now();
+    const id = setInterval(
+      () => setElapsed(Math.floor((Date.now() - start) / 1000)),
+      500,
+    );
+    return () => clearInterval(id);
+  }, []);
+  return <p className="text-gray-500 text-xs font-mono">Elapsed: {elapsed}s</p>;
 }

@@ -210,10 +210,18 @@ async def api_status():
 @app.exception_handler(Exception)
 async def global_exception_handler(request, exc):
     """Global exception handler."""
-    return {
-        "error": str(exc),
-        "type": type(exc).__name__,
-    }
+    import traceback
+    tb = traceback.format_exc()
+    print(f"[ERROR] {type(exc).__name__}: {exc}\n{tb}")
+    from fastapi.responses import JSONResponse
+    return JSONResponse(
+        status_code=500,
+        content={
+            "error": str(exc),
+            "type": type(exc).__name__,
+            "detail": str(exc),
+        },
+    )
 
 
 if __name__ == "__main__":

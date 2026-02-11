@@ -57,6 +57,10 @@ interface FrameData {
     mean: number;
     std: number;
     vector_ds?: number[];
+    pre_ln_ds?: number[];
+    pre_ln_norm?: number;
+    pre_ln_mean?: number;
+    pre_ln_std?: number;
   };
   x_activation_grid?: number[][];
   y_activation_grid?: number[][];
@@ -385,7 +389,7 @@ export function BDHArchitectureDiagram({
               isCurrent={isCurrent(1) && isAnimating}
               progress={getProgress(1)}
             >
-              {frameData?.embedding ? (
+              {isActive(1) && frameData?.embedding ? (
                 <g>
                   <text
                     x="22"
@@ -465,16 +469,71 @@ export function BDHArchitectureDiagram({
               isCurrent={isCurrent(2) && isAnimating}
               progress={getProgress(2)}
             >
-              <text
-                x="195"
-                y="34"
-                textAnchor="middle"
-                fill="#FCD34D"
-                fontSize="11"
-                fontFamily="monospace"
-              >
-                v* = (v* − μ) / σ
-              </text>
+              {isActive(2) &&
+              frameData?.embedding?.pre_ln_ds &&
+              frameData.embedding.vector_ds ? (
+                <g>
+                  {/* Before LN strip */}
+                  <text
+                    x="18"
+                    y="30"
+                    fill="#9CA3AF"
+                    fontSize="7"
+                    fontFamily="monospace"
+                  >
+                    Raw
+                  </text>
+                  <HeatmapStrip
+                    values={frameData.embedding.pre_ln_ds}
+                    x={40}
+                    y={23}
+                    width={140}
+                    height={10}
+                  />
+                  {/* After LN strip */}
+                  <text
+                    x="200"
+                    y="30"
+                    fill="#FCD34D"
+                    fontSize="7"
+                    fontFamily="monospace"
+                  >
+                    LN'd
+                  </text>
+                  <HeatmapStrip
+                    values={frameData.embedding.vector_ds}
+                    x={222}
+                    y={23}
+                    width={140}
+                    height={10}
+                  />
+                  {/* Stats */}
+                  <text
+                    x="195"
+                    y="44"
+                    textAnchor="middle"
+                    fill="#6B7280"
+                    fontSize="7"
+                    fontFamily="monospace"
+                  >
+                    ‖v‖ {frameData.embedding.pre_ln_norm?.toFixed(1)} →{" "}
+                    {frameData.embedding.norm.toFixed(1)} | μ{" "}
+                    {frameData.embedding.pre_ln_mean?.toFixed(3)} →{" "}
+                    {frameData.embedding.mean.toFixed(3)}
+                  </text>
+                </g>
+              ) : (
+                <text
+                  x="195"
+                  y="34"
+                  textAnchor="middle"
+                  fill="#FCD34D"
+                  fontSize="11"
+                  fontFamily="monospace"
+                >
+                  v* = (v* − μ) / σ
+                </text>
+              )}
             </ArchBox>
           </g>
 
@@ -486,7 +545,26 @@ export function BDHArchitectureDiagram({
             stroke={isActive(2) ? "#8B5CF6" : "#374151"}
             strokeWidth="2"
             fill="none"
+            opacity={isActive(2) ? 1 : 0.15}
           />
+          {isActive(2) && (
+            <path
+              d={`M ${CX} 248 L ${CX} 255 L ${LX + LW / 2} 255 L ${LX + LW / 2} 268`}
+              stroke="#C4B5FD"
+              strokeWidth="2"
+              strokeDasharray="4 8"
+              fill="none"
+              opacity="0.4"
+            >
+              <animate
+                attributeName="stroke-dashoffset"
+                from="12"
+                to="0"
+                dur="0.6s"
+                repeatCount="indefinite"
+              />
+            </path>
+          )}
           {/* Right branch to attention */}
           <path
             d={`M ${CX} 248 L ${CX} 255 L ${RX + RW / 2} 255 L ${RX + RW / 2} 268`}
@@ -494,11 +572,42 @@ export function BDHArchitectureDiagram({
             strokeWidth="2"
             fill="none"
             strokeDasharray="4 2"
+            opacity={isActive(5) ? 1 : 0.15}
           />
-          <text x={LX + LW / 2 + 30} y="264" fill="#9CA3AF" fontSize="9">
+          {isActive(5) && (
+            <path
+              d={`M ${CX} 248 L ${CX} 255 L ${RX + RW / 2} 255 L ${RX + RW / 2} 268`}
+              stroke="#67E8F9"
+              strokeWidth="2"
+              strokeDasharray="4 8"
+              fill="none"
+              opacity="0.4"
+            >
+              <animate
+                attributeName="stroke-dashoffset"
+                from="12"
+                to="0"
+                dur="0.6s"
+                repeatCount="indefinite"
+              />
+            </path>
+          )}
+          <text
+            x={LX + LW / 2 + 30}
+            y="264"
+            fill={isActive(2) ? "#9CA3AF" : "#374151"}
+            fontSize="9"
+            opacity={isActive(2) ? 1 : 0.3}
+          >
             to x-path
           </text>
-          <text x={RX + RW / 2 - 80} y="264" fill="#67E8F9" fontSize="9">
+          <text
+            x={RX + RW / 2 - 80}
+            y="264"
+            fill={isActive(5) ? "#67E8F9" : "#374151"}
+            fontSize="9"
+            opacity={isActive(5) ? 1 : 0.3}
+          >
             to attention (v*)
           </text>
 
@@ -518,7 +627,7 @@ export function BDHArchitectureDiagram({
               progress={getProgress(3)}
               shape="trapezoid"
             >
-              {frameData?.x_pre_relu?.histogram ? (
+              {isActive(3) && frameData?.x_pre_relu?.histogram ? (
                 <g>
                   <text
                     x={LW / 2}
@@ -598,7 +707,7 @@ export function BDHArchitectureDiagram({
               isCurrent={isCurrent(4) && isAnimating}
               progress={getProgress(4)}
             >
-              {frameData?.x_activation_grid ? (
+              {isActive(4) && frameData?.x_activation_grid ? (
                 <g>
                   <text
                     x={LW / 2}
@@ -673,7 +782,7 @@ export function BDHArchitectureDiagram({
                       </text>
                     )}
                 </g>
-              ) : frameData ? (
+              ) : isActive(4) && frameData ? (
                 <g>
                   <text
                     x={LW / 2}
@@ -711,9 +820,10 @@ export function BDHArchitectureDiagram({
               x={LW / 2}
               y="172"
               textAnchor="middle"
-              fill="#C4B5FD"
+              fill={isActive(4) ? "#C4B5FD" : "#374151"}
               fontSize="12"
               fontWeight="bold"
+              opacity={isActive(4) ? 1 : 0.3}
             >
               x
               <tspan baselineShift="sub" fontSize="9">
@@ -728,8 +838,34 @@ export function BDHArchitectureDiagram({
             stroke={isActive(5) ? "#8B5CF6" : "#374151"}
             strokeWidth="2"
             fill="none"
+            opacity={isActive(5) ? 1 : 0.1}
           />
-          <text x={CX} y="615" textAnchor="middle" fill="#9CA3AF" fontSize="9">
+          {isActive(5) && (
+            <path
+              d={`M ${LX + LW / 2} 582 L ${LX + LW / 2} 600 L ${RX + RW / 2} 600 L ${RX + RW / 2} 530`}
+              stroke="#C4B5FD"
+              strokeWidth="2"
+              strokeDasharray="4 8"
+              fill="none"
+              opacity="0.4"
+            >
+              <animate
+                attributeName="stroke-dashoffset"
+                from="12"
+                to="0"
+                dur="0.8s"
+                repeatCount="indefinite"
+              />
+            </path>
+          )}
+          <text
+            x={CX}
+            y="615"
+            textAnchor="middle"
+            fill={isActive(5) ? "#9CA3AF" : "#374151"}
+            fontSize="9"
+            opacity={isActive(5) ? 1 : 0.2}
+          >
             x
             <tspan baselineShift="sub" fontSize="7">
               l
@@ -743,7 +879,26 @@ export function BDHArchitectureDiagram({
             stroke={isActive(9) ? "#8B5CF6" : "#374151"}
             strokeWidth="2"
             fill="none"
+            opacity={isActive(9) ? 1 : 0.1}
           />
+          {isActive(9) && (
+            <path
+              d={`M ${LX + LW / 2} 600 L ${LX + LW / 2} 1020 L ${CX - 60} 1020`}
+              stroke="#C4B5FD"
+              strokeWidth="2"
+              strokeDasharray="4 8"
+              fill="none"
+              opacity="0.3"
+            >
+              <animate
+                attributeName="stroke-dashoffset"
+                from="12"
+                to="0"
+                dur="0.8s"
+                repeatCount="indefinite"
+              />
+            </path>
+          )}
 
           {/* ================================================================ */}
           {/* RIGHT COLUMN: attention → y-path                                 */}
@@ -768,16 +923,24 @@ export function BDHArchitectureDiagram({
                 fontSize="10"
                 fontFamily="monospace"
               >
-                ρ += x
+                ρ = x
                 <tspan baselineShift="sub" fontSize="7">
-                  l
+                  sparse
+                </tspan>{" "}
+                · x
+                <tspan baselineShift="sub" fontSize="7">
+                  sparse
                 </tspan>
                 <tspan baselineShift="super" fontSize="7">
                   T
                 </tspan>{" "}
-                ⊗ v* (Hebbian update)
+                (Q·K
+                <tspan baselineShift="super" fontSize="7">
+                  T
+                </tspan>
+                )
               </text>
-              {rhoMatrix && frameData ? (
+              {isActive(5) && rhoMatrix && frameData ? (
                 <RhoMatrixViz
                   matrix={rhoMatrix}
                   currentT={frameData.token_idx}
@@ -798,7 +961,7 @@ export function BDHArchitectureDiagram({
                   Attention score matrix accumulates
                 </text>
               )}
-              {rhoMatrix && frameData && (
+              {isActive(5) && rhoMatrix && frameData && (
                 <text
                   x={RW / 2}
                   y="225"
@@ -821,7 +984,7 @@ export function BDHArchitectureDiagram({
                   Each row shows attention from token to all past tokens.
                 </text>
               )}
-              {rhoMatrix && frameData && (
+              {isActive(5) && rhoMatrix && frameData && (
                 <text
                   x={RW / 2}
                   y="240"
@@ -862,13 +1025,12 @@ export function BDHArchitectureDiagram({
                 fontSize="10"
                 fontFamily="monospace"
               >
-                a* = Σ ρ[t,i] · v*
-                <tspan baselineShift="sub" fontSize="7">
-                  i
-                </tspan>{" "}
-                → ℝ{config.d}
+                a* = LN(ρ · v*) → ℝ
+                <tspan baselineShift="super" fontSize="7">
+                  {config.d}
+                </tspan>
               </text>
-              {frameData?.a_star_ds ? (
+              {isActive(6) && frameData?.a_star_ds ? (
                 <g>
                   <HeatmapStrip
                     values={frameData.a_star_ds}
@@ -932,7 +1094,7 @@ export function BDHArchitectureDiagram({
               progress={getProgress(7)}
               shape="trapezoid"
             >
-              {frameData?.y_pre_relu?.histogram ? (
+              {isActive(7) && frameData?.y_pre_relu?.histogram ? (
                 <g>
                   <text
                     x={RW / 2}
@@ -1012,7 +1174,7 @@ export function BDHArchitectureDiagram({
               isCurrent={isCurrent(8) && isAnimating}
               progress={getProgress(8)}
             >
-              {frameData?.y_activation_grid ? (
+              {isActive(8) && frameData?.y_activation_grid ? (
                 <g>
                   <text
                     x={RW / 2}
@@ -1086,7 +1248,7 @@ export function BDHArchitectureDiagram({
                       </text>
                     )}
                 </g>
-              ) : frameData ? (
+              ) : isActive(8) && frameData ? (
                 <g>
                   <text
                     x={RW / 2}
@@ -1124,9 +1286,10 @@ export function BDHArchitectureDiagram({
               x={RW / 2}
               y="172"
               textAnchor="middle"
-              fill="#10B981"
+              fill={isActive(8) ? "#10B981" : "#374151"}
               fontSize="12"
               fontWeight="bold"
+              opacity={isActive(8) ? 1 : 0.3}
             >
               y
               <tspan baselineShift="sub" fontSize="9">
@@ -1141,7 +1304,26 @@ export function BDHArchitectureDiagram({
             stroke={isActive(9) ? "#10B981" : "#374151"}
             strokeWidth="2"
             fill="none"
+            opacity={isActive(9) ? 1 : 0.1}
           />
+          {isActive(9) && (
+            <path
+              d={`M ${RX + RW / 2} 962 L ${RX + RW / 2} 1020 L ${CX + 60} 1020`}
+              stroke="#6EE7B7"
+              strokeWidth="2"
+              strokeDasharray="4 8"
+              fill="none"
+              opacity="0.3"
+            >
+              <animate
+                attributeName="stroke-dashoffset"
+                from="12"
+                to="0"
+                dur="0.8s"
+                repeatCount="indefinite"
+              />
+            </path>
+          )}
 
           {/* ================================================================ */}
           {/* CENTER: merge, decode, output                                    */}
@@ -1155,7 +1337,8 @@ export function BDHArchitectureDiagram({
               r={28}
               fill={isActive(9) ? "#164E63" : "#1F2937"}
               stroke={isActive(9) ? "#06B6D4" : "#374151"}
-              strokeWidth="2"
+              strokeWidth={isActive(9) ? 2 : 1}
+              strokeDasharray={isActive(9) ? undefined : "4 3"}
               animate={
                 isCurrent(9) && isAnimating ? { scale: [1, 1.05, 1] } : {}
               }
@@ -1174,13 +1357,14 @@ export function BDHArchitectureDiagram({
               x="60"
               y="70"
               textAnchor="middle"
-              fill="#E5E7EB"
+              fill={isActive(9) ? "#E5E7EB" : "#4B5563"}
               fontSize="10"
               fontWeight="bold"
+              opacity={isActive(9) ? 1 : 0.4}
             >
               x ⊙ y gating
             </text>
-            {frameData?.gating && (
+            {isActive(9) && frameData?.gating && (
               <>
                 <text
                   x="60"
@@ -1259,7 +1443,8 @@ export function BDHArchitectureDiagram({
               r={20}
               fill={isActive(11) ? "#312E81" : "#1F2937"}
               stroke={isActive(11) ? "#8B5CF6" : "#374151"}
-              strokeWidth="2"
+              strokeWidth={isActive(11) ? 2 : 1}
+              strokeDasharray={isActive(11) ? undefined : "4 3"}
               animate={
                 isCurrent(11) && isAnimating ? { scale: [1, 1.05, 1] } : {}
               }
@@ -1279,8 +1464,9 @@ export function BDHArchitectureDiagram({
               x="25"
               y="52"
               textAnchor="middle"
-              fill="#9CA3AF"
+              fill={isActive(11) ? "#9CA3AF" : "#374151"}
               fontSize="10"
+              opacity={isActive(11) ? 1 : 0.35}
             >
               v* + Δv*
             </text>
@@ -1293,11 +1479,29 @@ export function BDHArchitectureDiagram({
             strokeWidth="1.5"
             fill="none"
             strokeDasharray="4 2"
-            opacity="0.5"
+            opacity={isActive(11) ? 0.5 : 0.08}
           />
+          {isActive(11) && (
+            <path
+              d={`M ${CX} 248 L ${W - 30} 248 L ${W - 30} 1215 L ${CX + 25} 1215`}
+              stroke="#C4B5FD"
+              strokeWidth="1.5"
+              strokeDasharray="3 9"
+              fill="none"
+              opacity="0.3"
+            >
+              <animate
+                attributeName="stroke-dashoffset"
+                from="12"
+                to="0"
+                dur="1s"
+                repeatCount="indefinite"
+              />
+            </path>
+          )}
 
           {/* ===== OUTPUT PREDICTIONS ===== */}
-          {predictions && (
+          {isActive(12) && predictions && (
             <g transform={`translate(${CX - 240}, 1265)`}>
               <text
                 x="240"
@@ -1566,13 +1770,29 @@ function HistogramViz({
 }) {
   const maxCount = Math.max(1, ...bins.map((b) => b.count));
   const barW = width / bins.length;
-  const zeroIdx = bins.findIndex((b) => b.end >= 0);
+
+  // Find the precise zero-crossing pixel position
+  const straddleIdx = bins.findIndex((b) => b.start < 0 && b.end > 0);
+  const firstPositiveIdx = bins.findIndex((b) => b.start >= 0);
+  // Interpolate zero within the straddling bin, or use first positive bin edge
+  const zeroPixel =
+    straddleIdx >= 0
+      ? (straddleIdx +
+          -bins[straddleIdx].start /
+            (bins[straddleIdx].end - bins[straddleIdx].start)) *
+        barW
+      : firstPositiveIdx >= 0
+        ? firstPositiveIdx * barW
+        : -1;
+
   return (
     <g transform={`translate(${x}, ${y})`}>
       <rect width={width} height={height} fill="#0F172A" rx="2" />
       {bins.map((bin, i) => {
         const barH = (bin.count / maxCount) * (height - 2);
-        const isPositive = bin.start >= 0;
+        // Color by midpoint: bins centered in positive range → orange
+        const midpoint = (bin.start + bin.end) / 2;
+        const isPositive = midpoint >= 0;
         return (
           <rect
             key={i}
@@ -1586,11 +1806,11 @@ function HistogramViz({
           />
         );
       })}
-      {zeroIdx >= 0 && (
+      {zeroPixel >= 0 && (
         <line
-          x1={zeroIdx * barW}
+          x1={zeroPixel}
           y1={0}
-          x2={zeroIdx * barW}
+          x2={zeroPixel}
           y2={height}
           stroke="#EF4444"
           strokeWidth="1.5"
@@ -1749,8 +1969,53 @@ function ArchBox({
         d={getPath()}
         fill="none"
         stroke={isActive ? "#8B5CF6" : "#374151"}
-        strokeWidth="2"
+        strokeWidth={isActive ? 2 : 1}
+        strokeDasharray={isActive ? undefined : "4 3"}
       />
+      {/* Computing shimmer — animated scan line when current step */}
+      {isCurrent && (
+        <g>
+          <rect
+            x="2"
+            y="20"
+            width={width - 4}
+            height="3"
+            rx="1.5"
+            fill="#A78BFA"
+            opacity="0.7"
+          >
+            <animate
+              attributeName="y"
+              from="20"
+              to={String(height - 3)}
+              dur="1.2s"
+              repeatCount="indefinite"
+            />
+            <animate
+              attributeName="opacity"
+              values="0.7;0.2;0.7"
+              dur="1.2s"
+              repeatCount="indefinite"
+            />
+          </rect>
+          <rect
+            x="0"
+            y="0"
+            width={width}
+            height={height}
+            fill="#8B5CF6"
+            opacity="0.05"
+            rx="4"
+          >
+            <animate
+              attributeName="opacity"
+              values="0.02;0.08;0.02"
+              dur="2s"
+              repeatCount="indefinite"
+            />
+          </rect>
+        </g>
+      )}
       <text
         x={width / 2}
         y="18"
@@ -1761,7 +2026,7 @@ function ArchBox({
       >
         {title}
       </text>
-      {children}
+      <g opacity={isActive ? 1 : 0.35}>{children}</g>
     </g>
   );
 }
@@ -1780,13 +2045,66 @@ function FlowArrow({
   active: boolean;
 }) {
   return (
-    <line
-      x1={x1}
-      y1={y1}
-      x2={x2}
-      y2={y2}
-      stroke={active ? "#8B5CF6" : "#374151"}
-      strokeWidth={active ? 2 : 1.5}
-    />
+    <g>
+      <line
+        x1={x1}
+        y1={y1}
+        x2={x2}
+        y2={y2}
+        stroke={active ? "#8B5CF6" : "#374151"}
+        strokeWidth={active ? 2 : 1}
+        opacity={active ? 1 : 0.2}
+      />
+      {active && (
+        <>
+          <line
+            x1={x1}
+            y1={y1}
+            x2={x2}
+            y2={y2}
+            stroke="#C4B5FD"
+            strokeWidth="2"
+            strokeDasharray="4 8"
+            opacity="0.5"
+          >
+            <animate
+              attributeName="stroke-dashoffset"
+              from="12"
+              to="0"
+              dur="0.6s"
+              repeatCount="indefinite"
+            />
+          </line>
+          <circle r="3" fill="#A78BFA" opacity="0.8">
+            <animate
+              attributeName="cx"
+              from={String(x1)}
+              to={String(x2)}
+              dur="0.8s"
+              repeatCount="indefinite"
+            />
+            <animate
+              attributeName="cy"
+              from={String(y1)}
+              to={String(y2)}
+              dur="0.8s"
+              repeatCount="indefinite"
+            />
+            <animate
+              attributeName="r"
+              values="2;4;2"
+              dur="0.8s"
+              repeatCount="indefinite"
+            />
+            <animate
+              attributeName="opacity"
+              values="0.9;0.3;0.9"
+              dur="0.8s"
+              repeatCount="indefinite"
+            />
+          </circle>
+        </>
+      )}
+    </g>
   );
 }

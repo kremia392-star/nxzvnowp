@@ -77,6 +77,7 @@ class ExtractionBuffer:
         self.attention_output: Dict[int, torch.Tensor] = {}  # layer -> a* (attention output after LN)
         self.layer_outputs: Dict[int, torch.Tensor] = {}  # layer -> output
         self.residuals: Dict[int, torch.Tensor] = {}  # layer -> residual
+        self.pre_layernorm: Optional[torch.Tensor] = None  # raw embedding before initial LN
         self.input_tokens: Optional[torch.Tensor] = None
         self.final_output: Optional[torch.Tensor] = None
     
@@ -360,6 +361,10 @@ class BDH(nn.Module):
         
         # Embed tokens: (B, T) -> (B, T, D) -> (B, 1, T, D)
         x = self.embed(idx).unsqueeze(1)
+        
+        # Capture raw embedding before LayerNorm
+        if extracting and buffer:
+            buffer.pre_layernorm = x.clone()
         
         # Initial layer norm
         x = self.ln(x)

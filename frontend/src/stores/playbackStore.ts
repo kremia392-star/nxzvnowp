@@ -365,6 +365,7 @@ interface PlaybackState {
   playbackData: PlaybackData | null;
   currentFrame: number;
   isLoading: boolean;
+  loadingMessage: string;
   error: string | null;
   mode: "live" | "playback";
   currentModel: string;
@@ -382,139 +383,167 @@ interface PlaybackState {
   reset: () => void;
 }
 
-// Sample data for demo mode
-const SAMPLE_PLAYBACK: PlaybackData = {
-  input_text: "The capital of France is Paris",
-  input_tokens: [84, 104, 101, 32, 99, 97, 112, 105, 116, 97, 108],
-  input_chars: ["T", "h", "e", " ", "c", "a", "p", "i", "t", "a", "l"],
-  num_layers: 8,
-  num_heads: 4,
-  neurons_per_head: 8192,
-  frames: Array.from({ length: 11 * 8 }, (_, i) => ({
-    token_idx: i % 11,
-    token_byte: [84, 104, 101, 32, 99, 97, 112, 105, 116, 97, 108][i % 11],
-    token_char: ["T", "h", "e", " ", "c", "a", "p", "i", "t", "a", "l"][i % 11],
-    layer: Math.floor(i / 11),
-    x_active: Array.from({ length: 4 }, () => ({
-      indices: Array.from({ length: 50 }, () =>
-        Math.floor(Math.random() * 8192),
-      ),
-      values: Array.from({ length: 50 }, () => Math.random()),
-    })),
-    y_active: Array.from({ length: 4 }, () => ({
-      indices: Array.from({ length: 30 }, () =>
-        Math.floor(Math.random() * 8192),
-      ),
-      values: Array.from({ length: 30 }, () => Math.random()),
-    })),
-    x_sparsity: 0.93 + Math.random() * 0.04,
-    y_sparsity: 0.94 + Math.random() * 0.03,
-  })),
-  overall_sparsity: 0.947,
-  sparsity_by_layer: [0.94, 0.95, 0.96, 0.95, 0.94, 0.95, 0.96, 0.95],
-};
-
 export const usePlaybackStore = create<PlaybackState>((set, get) => ({
   playbackData: null,
   currentFrame: 0,
   isLoading: false,
+  loadingMessage: "",
   error: null,
   mode: "playback",
   currentModel: "french",
 
   loadPlayback: async (text: string, modelName?: string) => {
     const model = modelName || get().currentModel;
-    set({ isLoading: true, error: null });
+    set({
+      isLoading: true,
+      error: null,
+      loadingMessage: "Checking backend...",
+    });
 
+    // Quick health check first (2s timeout)
     try {
-      // Try API with a 15-second timeout
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 15000);
-
-      const response = await fetch("/api/visualization/playback", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text, model_name: model }),
-        signal: controller.signal,
+      const hc = await fetch("/api/status", {
+        signal: AbortSignal.timeout(3000),
       });
-
-      clearTimeout(timeoutId);
-
-      if (response.ok) {
-        const data = await response.json();
+      if (!hc.ok) {
         set({
-          playbackData: data,
-          currentFrame: 0,
           isLoading: false,
-          mode: "live",
-          error: null,
+          loadingMessage: "",
+          error:
+            "Backend responded but API status check failed. Check server logs.",
         });
         return;
-      } else {
-        const errData = await response
-          .json()
-          .catch(() => ({ detail: "Unknown error" }));
-        console.warn("API error:", errData);
-        set({ error: `API Error: ${errData.detail || response.statusText}` });
       }
-    } catch (err: any) {
-      if (err?.name === "AbortError") {
-        console.warn("API request timed out");
-        set({ error: "Request timed out - showing demo data" });
-      } else {
-        console.warn("API not available:", err);
-        set({ error: "Backend offline - showing demo data" });
-      }
-    }
-
-    // Fall back to sample data with the input text adjusted
-    const chars = Array.from(text);
-    const numTokens = chars.length;
-    const numLayers = SAMPLE_PLAYBACK.num_layers;
-    const numHeads = SAMPLE_PLAYBACK.num_heads;
-    const neuronsPerHead = SAMPLE_PLAYBACK.neurons_per_head;
-
-    // Generate frames for ALL tokens across ALL layers
-    const frames: PlaybackFrame[] = [];
-    for (let layer = 0; layer < numLayers; layer++) {
-      for (let t = 0; t < numTokens; t++) {
-        const charCode = chars[t].charCodeAt(0);
-        frames.push({
-          token_idx: t,
-          token_byte: charCode,
-          token_char: chars[t],
-          layer,
-          x_active: Array.from({ length: numHeads }, () => ({
-            indices: Array.from({ length: 50 }, () =>
-              Math.floor(Math.random() * neuronsPerHead),
-            ),
-            values: Array.from({ length: 50 }, () => Math.random()),
-          })),
-          y_active: Array.from({ length: numHeads }, () => ({
-            indices: Array.from({ length: 30 }, () =>
-              Math.floor(Math.random() * neuronsPerHead),
-            ),
-            values: Array.from({ length: 30 }, () => Math.random()),
-          })),
-          x_sparsity: 0.93 + Math.random() * 0.04,
-          y_sparsity: 0.94 + Math.random() * 0.03,
+      const status = await hc.json();
+      if (!status.loaded_models || status.loaded_models.length === 0) {
+        set({
+          loadingMessage:
+            "Backend is loading model... (first run may take longer)",
         });
       }
+    } catch {
+      set({
+        isLoading: false,
+        loadingMessage: "",
+        error:
+          "Cannot reach backend. Start the server with: uvicorn backend.main:app --reload --port 8000  (from the project root)",
+      });
+      return;
     }
 
-    const sampleWithText: PlaybackData = {
-      ...SAMPLE_PLAYBACK,
-      input_text: text,
-      input_tokens: chars.map((c) => c.charCodeAt(0)),
-      input_chars: chars.map((c) => (c === " " ? " " : c)),
-      frames,
-    };
-    set({
-      playbackData: sampleWithText,
-      currentFrame: 0,
-      isLoading: false,
-      mode: "playback",
-    });
+    const MAX_RETRIES = 3;
+    const TIMEOUT_MS = 120_000; // 120 seconds — model inference can be slow
+
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        // Update loading message
+        if (attempt === 1) {
+          set({
+            loadingMessage: "Running model inference... (this may take 10-30s)",
+          });
+        } else {
+          set({
+            loadingMessage: `Retry ${attempt}/${MAX_RETRIES} — running inference...`,
+          });
+        }
+
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
+
+        const response = await fetch("/api/visualization/playback", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            text,
+            model_name: model,
+            include_attention: true,
+          }),
+          signal: controller.signal,
+        });
+
+        clearTimeout(timeoutId);
+
+        if (response.ok) {
+          set({ loadingMessage: "Processing response..." });
+          const data = await response.json();
+          set({
+            playbackData: data,
+            currentFrame: 0,
+            isLoading: false,
+            loadingMessage: "",
+            mode: "live",
+            error: null,
+          });
+          return; // Success!
+        } else {
+          const errData = await response
+            .json()
+            .catch(() => ({ detail: "Unknown error" }));
+          console.warn(`API error (attempt ${attempt}):`, errData);
+
+          // Don't retry on 4xx client errors
+          if (response.status >= 400 && response.status < 500) {
+            set({
+              isLoading: false,
+              loadingMessage: "",
+              error: `API Error: ${errData.detail || response.statusText}`,
+            });
+            return;
+          }
+          // Server errors — retry
+          if (attempt < MAX_RETRIES) {
+            const backoff = attempt * 2000;
+            set({
+              loadingMessage: `Server error — retrying in ${backoff / 1000}s...`,
+            });
+            await new Promise((r) => setTimeout(r, backoff));
+            continue;
+          }
+          set({
+            isLoading: false,
+            loadingMessage: "",
+            error: `Server error after ${MAX_RETRIES} attempts: ${errData.detail || response.statusText}`,
+          });
+          return;
+        }
+      } catch (err: any) {
+        if (err?.name === "AbortError") {
+          console.warn(`Request timed out (attempt ${attempt})`);
+          if (attempt < MAX_RETRIES) {
+            set({
+              loadingMessage: `Timed out — retrying (${attempt + 1}/${MAX_RETRIES})...`,
+            });
+            continue;
+          }
+          set({
+            isLoading: false,
+            loadingMessage: "",
+            error:
+              "Request timed out after multiple attempts. Ensure the backend is running (uvicorn on port 8000) and the model checkpoint is loaded.",
+          });
+          return;
+        } else {
+          console.warn(`API not available (attempt ${attempt}):`, err);
+          if (attempt < MAX_RETRIES) {
+            const backoff = attempt * 2000;
+            set({
+              loadingMessage: `Backend unreachable — retrying in ${backoff / 1000}s...`,
+            });
+            await new Promise((r) => setTimeout(r, backoff));
+            continue;
+          }
+          set({
+            isLoading: false,
+            loadingMessage: "",
+            error:
+              "Backend is offline. Start the server with: uvicorn backend.main:app --reload --port 8000  (from the project root)",
+          });
+          return;
+        }
+      }
+    }
+
+    set({ isLoading: false, loadingMessage: "" });
   },
 
   setModel: (model: string) => {

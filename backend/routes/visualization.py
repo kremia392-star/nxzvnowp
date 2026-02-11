@@ -10,7 +10,7 @@ Endpoints for visualization data:
 
 from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import ORJSONResponse
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 import torch
 import numpy as np
@@ -114,6 +114,11 @@ async def generate_playback(request: PlaybackRequest, req: Request):
             
             logits_cpu = logits[0].cpu()
             embed_cpu = embed_output[0].cpu()
+            
+            # Pre-LayerNorm embedding (raw, before normalization)
+            pre_ln_cpu = None
+            if buffer.pre_layernorm is not None:
+                pre_ln_cpu = buffer.pre_layernorm[0, 0].cpu()  # (T, D)
     
     t2 = time.perf_counter()
     
@@ -316,6 +321,14 @@ async def generate_playback(request: PlaybackRequest, req: Request):
                     "std": round(float(embed_vec.std()), 3),
                     "vector_ds": vector_ds,
                 }
+                # LayerNorm before/after comparison
+                if pre_ln_cpu is not None:
+                    pre_ln_vec = pre_ln_cpu[t].numpy()
+                    pre_ln_ds = [round(float(pre_ln_vec[i*group:(i+1)*group].mean()), 4) for i in range(ds_size)]
+                    embed_info["pre_ln_ds"] = pre_ln_ds
+                    embed_info["pre_ln_norm"] = round(float(np.linalg.norm(pre_ln_vec)), 3)
+                    embed_info["pre_ln_mean"] = round(float(pre_ln_vec.mean()), 5)
+                    embed_info["pre_ln_std"] = round(float(pre_ln_vec.std()), 5)
             
             frame = {
                 "token_idx": t,
@@ -387,7 +400,7 @@ async def generate_playback(request: PlaybackRequest, req: Request):
     t3 = time.perf_counter()
     print(f"[PERF] setup={t1-t0:.3f}s inference={t2-t1:.3f}s frames={t3-t2:.3f}s total={t3-t0:.3f}s ({T}tok × {len(layer_data_cpu)}layers)")
     
-    return ORJSONResponse({
+    return JSONResponse({
         "input_text": request.text,
         "input_tokens": token_bytes,
         "input_chars": input_chars,

@@ -98,7 +98,7 @@ python scripts/generate_playback.py --model checkpoints/french.pt --output front
 ### 5. Start Backend
 
 ```bash
-cd backend
+# Run from the project root (NOT from backend/)
 uvicorn backend.main:app --reload --port 8000
 ```
 
